@@ -44,6 +44,12 @@ public:
 
 		return m_fullObject[m_start + index];
 	}
+
+	inline sliceType atClone(size_t index) {
+		return m_fullObject[m_start + index];
+	}
+
+
 	inline sliceType& front() { return m_fullObject[m_start]; }
 	inline sliceType& back() { return m_fullObject[m_end]; }
 	inline sliceType* data() { return &m_fullObject[m_start]; }
@@ -58,6 +64,11 @@ public:
 
 	// This function 
 	inline void slide(size_t ammount) { m_start += ammount; m_end += ammount; }
+
+	// Getters
+	inline size_t getStart() { return m_start; }
+	inline size_t getEnd() { return m_end; }
+
 
 };
 

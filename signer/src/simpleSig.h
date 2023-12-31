@@ -97,7 +97,6 @@ namespace Signer
 
 			// Just realised this double compiles the mask, Which is causing huge issues
 			//CompileSignatureMask();
-			this->signatureString = Startsignature;
 			return; // Just here so i can set a breakpoint
 		}
 
@@ -106,51 +105,29 @@ namespace Signer
 			CompileSignatureMask();
 		}
 
-		SimpleSig(const std::vector<BYTE>& signature, const nLengthBitMask& mask) : signature(signature), mask(mask) {}
-
-		/**
-		* @brief Scans the given slice for the signature
-		* @param deepSearch If true, the scanner will scan the whole data, otherwise it will return the first occurence
-		*/
-		ULONGLONG inline scan(const std::vector<BYTE>& data,bool deepSearch = false, size_t offset = 0) const {
-			BoundedSlice<BYTE> memslice(
-				data,
-				offset,
-				offset + signature.size(),
-				data.size());
-			size_t sliceEndIndex = offset + signature.size();
-			ULONGLONG foundCount = 0;
-			// Logs::Logger::Info("Mask: {}", maskToString());
-			while (true)
-			{
-				for (int sigIndex = 0; sigIndex < signature.size(); sigIndex++)
-				{
-					if (sliceEndIndex == data.size())
-						return foundCount;
-
-					if (mask[sigIndex])
-						continue;
-
-					if (signature[sigIndex] != memslice[sigIndex])
-					{
-						memslice.slide(1);
-						sliceEndIndex++;
-						break;
-					}
-
-					if (sigIndex == signature.size() - 1)
-					{
-						foundCount++;
-						if (!deepSearch)
-							return 1;
-					}
-				}
-			}
+		SimpleSig(const std::vector<BYTE>& signature, const nLengthBitMask& mask) : signature(signature), mask(mask) {
+		}
+		SimpleSig(std::vector<BYTE>& signature, nLengthBitMask& mask) : signature(signature), mask(mask) {
 		}
 
 		std::string toString() const
 		{
-			return signatureString;
+			std::stringstream result;
+			for (size_t i = 0; i < signature.size(); i++)
+			{
+				result << " ";
+
+				if (mask[i])
+				{
+					result << "?";
+				}
+				else
+				{
+					// Convert to hex with padded for 00 if needed
+					result << std::setfill('0') << std::setw(2) << std::hex << std::uppercase << (int)signature[i];
+				}
+			}
+			return result.str();
 		}
 
 		std::string maskToString() const
@@ -173,6 +150,17 @@ namespace Signer
 			return result.str();
 		}
 
+		// Getters
+		std::vector<BYTE>* getSignature() { return &signature; }
+		nLengthBitMask* getMask()  { return &mask; }
+		size_t getLength() const { return signature.size(); }
+		bool isNull() const { return signature.empty(); }
+
+		// [] operator
+		BYTE operator[](size_t index) const {
+			return signature[index];
+		}
+
 	private:
 		void inline CompileSignatureMask()
 		{
@@ -187,6 +175,5 @@ namespace Signer
 	private:
 		std::vector<BYTE> signature;
 		nLengthBitMask mask;
-		std::string signatureString;
 	};
 }
