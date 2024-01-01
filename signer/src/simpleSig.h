@@ -161,6 +161,14 @@ namespace Signer
 			return signature[index];
 		}
 
+		void setOffset(size_t offset) {
+			this->offset = offset;
+		}
+
+		size_t getOffset() const {
+			return offset;
+		}
+
 	private:
 		void inline CompileSignatureMask()
 		{
@@ -175,5 +183,6 @@ namespace Signer
 	private:
 		std::vector<BYTE> signature;
 		nLengthBitMask mask;
+		size_t offset = 0;
 	};
 }
