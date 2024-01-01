@@ -141,14 +141,27 @@ void Application::writeWorkingSignatures()
 {
 	Logs::Logger::Info("Writing working signatures to file");
 	nlohmann::json wj;
+	nlohmann::json ws;
+	nlohmann::json mhs;
+
 	for (auto& index : workingSignatures)
 	{
 		// End structure should be "symbol" : [sig, offset]
 		auto& signature = this->mcpe->m_bdsSigs[index];
 
 		nlohmann::json array = { signature.second.toString(), signature.second.getOffset() };
-		wj[signature.first] = array;
+		ws[signature.first] = array;
 	}
+	wj["workingSignatures"] = ws;
+
+
+	// Write manual sig fixes
+	for (auto& index : this->multiHitSignatures)
+	{
+		auto& signature = this->mcpe->m_bdsSigs[index];
+		mhs[signature.first] = { signature.second.toString(), "MULTI" };
+	}
+	wj["multiHitSignatures"] = mhs;
 	std::ofstream o("workingSignatures.json");
 	o << std::setw(4) << wj << std::endl;
 	o.close();
@@ -201,5 +214,54 @@ std::vector<ULONGLONG> Application::scan(Signer::SimpleSig& signature, bool deep
 
 Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t offset)
 {
-	return Signer::SimpleSig("");
+	Signer::SimpleSig trimmedSig("");
+
+	// The signature data, mask, and size
+	auto* sigData = signature.getSignature();
+	size_t sigSize = signature.getLength();
+	auto* sigMask = signature.getMask();
+
+	// Calculate a center point of the signature
+	size_t centerPoint = sigSize / 2;
+	// Mem slice over the signature to its left
+	BoundedSlice<BYTE> leftSlice(
+		*const_cast<const std::vector<BYTE>*>(sigData),
+		0,
+		centerPoint,
+		sigSize
+	);
+
+	// Construct a new signature
+	Signer::SimpleSig newSig(leftSlice.getAsVector(), *sigMask);
+
+	while (true)
+	{
+		// Scan for the new signature
+		auto addrs = scan(newSig, true);
+		// If there are no hits, return an empty signature
+		if (addrs.size() == 0)
+			return Signer::SimpleSig("");
+		// If there is a single hit, begin testing for validity
+		if (addrs.size() == 1)
+		{
+			// Use std::move to avoid copying the signature
+			trimmedSig = std::move(newSig);
+			// Set the offset of the signature
+			trimmedSig.setOffset(addrs[0] + 0xC00);
+
+			// Check if the offset is aligned, if not, return an empty signature
+			if (trimmedSig.getOffset() % 0x10 != 0)
+				return Signer::SimpleSig("");
+			break;
+		}
+
+		// Multiple hits, reclaim more of the signature
+		leftSlice.setEnd(leftSlice.getEnd() + 1);
+		if (leftSlice.getEnd() == sigSize)
+			return Signer::SimpleSig("");
+
+		// Set the new signature data
+		newSig.setSignatureDataNoMask(leftSlice.getAsVector());
+	}
+	return std::move(trimmedSig);
 }

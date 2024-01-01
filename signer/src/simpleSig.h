@@ -115,7 +115,8 @@ namespace Signer
 			std::stringstream result;
 			for (size_t i = 0; i < signature.size(); i++)
 			{
-				result << " ";
+				if (i != 0)
+					result << " ";
 
 				if (mask[i])
 				{
@@ -167,6 +168,14 @@ namespace Signer
 
 		size_t getOffset() const {
 			return offset;
+		}
+
+		void setSignatureDataNoMask(const std::vector<BYTE>& signature) {
+			this->signature = signature;
+		}
+
+		void setMaskNoSignature(const nLengthBitMask& mask) {
+			this->mask = mask;
 		}
 
 	private:
