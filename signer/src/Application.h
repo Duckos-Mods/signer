@@ -17,11 +17,13 @@ private:
 	std::mutex workingSignaturesMutex;
 	std::mutex bruteForceContendersMutex;
 	std::mutex multiHitSignaturesMutex;
+	std::mutex nonAlignedSignaturesMutex;
 private:
 	// Finished Signature scans
 	std::vector<ULONGLONG> workingSignatures;
 	std::vector<ULONGLONG> bruteForceContenders;
 	std::vector<ULONGLONG> multiHitSignatures;
+	std::vector<ULONGLONG> nonAlignedSignatures;
 private:
 	// Arguments
 	std::string mcpePath;
@@ -30,6 +32,10 @@ private:
 	int nonBruteForceThreads = 1;
 public:
 	Application(int argc, char* argv[]);
+	~Application()
+	{
+		Logs::Logger::close();
+	}
 private:
 	void start();
 

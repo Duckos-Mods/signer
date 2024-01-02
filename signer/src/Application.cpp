@@ -3,7 +3,7 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include "Application.h"
-
+#include <assert.h>
 
 
 Application::Application(int argc, char* argv[])
@@ -79,6 +79,7 @@ void Application::start()
 	}
 
 	NBSP();
+	BFSP();
 
 	writeWorkingSignatures();
 }
@@ -135,6 +136,68 @@ void Application::NBSP()
 
 void Application::BFSP()
 {
+	// Init the worker pool
+	this->workerPool = new BS::thread_pool(this->nonBruteForceThreads);
+
+	// Store the current working signatures size
+	size_t currentWorkingSignaturesSize = workingSignatures.size();
+
+	// Define the lambda
+	auto lambda = [&](size_t index) -> void
+		{
+			// Get sig from sigDump
+			auto& signature = this->mcpe->m_bdsSigs[index];
+
+			// Trim scan the signature
+			auto trimmedSig = this->trimScan(signature.second, 0);
+
+			// If sig is null we failed to trim scan and should return and warn in the console
+			if (trimmedSig.isNull())
+			{
+				Logs::Logger::Warning("Failed to trim scan for the signature of {}", signature.first);
+				return;
+			}
+
+			// If sig is not aligned to 0x10 we should warn in the console and push to a new vector
+			if (trimmedSig.getOffset() % 0x10 != 0)
+			{
+				Logs::Logger::Warning("Trimmed signature {} was not aligned to 0x10", signature.first);
+				nonAlignedSignaturesMutex.lock();
+				nonAlignedSignatures.push_back(index);
+				nonAlignedSignaturesMutex.unlock();
+				return;
+			}
+
+			// We have a trimmed signature so log it and modify the signature in the mcpe object
+			std::stringstream locatedAddressHex;
+			locatedAddressHex << std::hex << trimmedSig.getOffset();
+			Logs::Logger::Info("Trimmed signature {} was found at 0x{}", signature.first, locatedAddressHex.str());
+			this->mcpe->m_bdsSigs[index].second = trimmedSig;
+
+			// Add the index to the working signatures
+			workingSignaturesMutex.lock();
+			workingSignatures.push_back(index);
+			workingSignaturesMutex.unlock();
+
+			// return
+			return;
+		};
+
+	Logs::Logger::Info("Starting brute force search");
+	for (auto& index : bruteForceContenders)
+	{
+		auto call = [=]() -> void
+			{
+					lambda(index);
+			};
+		this->workerPool->detach_task(call);
+	}
+	Logs::Logger::Info("Waiting for brute force search to finish");
+	this->workerPool->wait();
+	delete this->workerPool; // Delete the worker pool
+	Logs::Logger::Info("Brute force search finished with {}/{} signatures found", workingSignatures.size() - currentWorkingSignaturesSize, bruteForceContenders.size());
+
+
 }
 
 void Application::writeWorkingSignatures()
@@ -143,6 +206,7 @@ void Application::writeWorkingSignatures()
 	nlohmann::json wj;
 	nlohmann::json ws;
 	nlohmann::json mhs;
+	nlohmann::json nas;
 
 	for (auto& index : workingSignatures)
 	{
@@ -162,6 +226,16 @@ void Application::writeWorkingSignatures()
 		mhs[signature.first] = { signature.second.toString(), "MULTI" };
 	}
 	wj["multiHitSignatures"] = mhs;
+
+	// Write non aligned sigs
+	for (auto& index : this->nonAlignedSignatures)
+	{
+		auto& signature = this->mcpe->m_bdsSigs[index];
+		nas[signature.first] = { signature.second.toString(), signature.second.getOffset()};
+
+	}
+	wj["nonAlignedSignatures"] = nas;
+
 	std::ofstream o("workingSignatures.json");
 	o << std::setw(4) << wj << std::endl;
 	o.close();
@@ -185,13 +259,25 @@ std::vector<ULONGLONG> Application::scan(Signer::SimpleSig& signature, bool deep
 	);
 	
 	// size_t currentEndOffset = sigSize - 1; // The current end offset of the signature
-
+	size_t oldEnd = mcpeSlice.getEnd();
 	while (mcpeSlice.getEnd() != this->mcpe->m_PEData.size())
 	{
 		for (size_t i = 0; i < sigSize; i++)
 		{
+			// Handle the case where the last byte is a wildcard this used to cause a loop
+			if (i == sigSize - 1 && (*sigMask)[i])
+			{
+				// Found a match
+				locatedAddresses.push_back(mcpeSlice.getStart());
+				mcpeSlice.slide(sigSize - 1);
+				if (!deepSearch)
+					return locatedAddresses;
+				break; // No reason to continue if the current byte doesn't match
+			}
 			if ((*sigMask)[i])
+			{
 				continue; // Found a wildcard, skip this byte
+			}
 			if ((*sigData)[i] != mcpeSlice[i])
 			{
 				mcpeSlice.slide(1);
@@ -207,6 +293,23 @@ std::vector<ULONGLONG> Application::scan(Signer::SimpleSig& signature, bool deep
 			}
 			
 		}
+		if (mcpeSlice.getEnd() == oldEnd)
+		{
+			mcpeSlice.slide(1);
+			Logs::Logger::Warning("Detected a hang in the scan, sliding 1 byte this should not happen dumping log info");
+			// Throw a debug breakpoint
+			//__debugbreak();
+			Logs::Logger::Warning(R"(
+Start : {}
+End : {}
+Size : {}
+Signature : {}
+Mask : {}
+Locatted Addresses Count : {}
+Current End Offset : {}
+)", mcpeSlice.getStart(), mcpeSlice.getEnd(), mcpeSlice.size(), signature.toString(), signature.maskToString(), locatedAddresses.size(), oldEnd);
+		}
+		oldEnd = mcpeSlice.getEnd();
 	}
 
 	return locatedAddresses;
@@ -215,6 +318,9 @@ std::vector<ULONGLONG> Application::scan(Signer::SimpleSig& signature, bool deep
 Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t offset)
 {
 	Signer::SimpleSig trimmedSig("");
+
+	if (signature.getLength() < 4)
+		return trimmedSig;
 
 	// The signature data, mask, and size
 	auto* sigData = signature.getSignature();
@@ -232,6 +338,13 @@ Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t off
 	);
 
 	// Construct a new signature
+	// Remove any trailing wildcards
+	while (leftSlice.back() == 0x00)
+	{
+		leftSlice.setEnd(leftSlice.getEnd() + 1);
+		if (leftSlice.getEnd() == 0)
+			return Signer::SimpleSig("");
+	}
 	Signer::SimpleSig newSig(leftSlice.getAsVector(), *sigMask);
 
 	while (true)
@@ -249,9 +362,6 @@ Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t off
 			// Set the offset of the signature
 			trimmedSig.setOffset(addrs[0] + 0xC00);
 
-			// Check if the offset is aligned, if not, return an empty signature
-			if (trimmedSig.getOffset() % 0x10 != 0)
-				return Signer::SimpleSig("");
 			break;
 		}
 
@@ -263,5 +373,5 @@ Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t off
 		// Set the new signature data
 		newSig.setSignatureDataNoMask(leftSlice.getAsVector());
 	}
-	return std::move(trimmedSig);
+	return trimmedSig;
 }
