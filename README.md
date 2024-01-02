@@ -35,6 +35,7 @@ To effectively utilize Signer, follow these steps:
 | --MP     | Specifies the location of MCPE (Minecraft Pocket Edition) |
 | --PSP    | Indicates the location of the Signature dump (essential for current functionality) |
 | --NBTC   | Specifies the number of threads to use (optional but recommended for faster processing) |
+| --CDV   | Specifies the division factor used to calculate the bruteforce signatures. (default is 2) |
 
 Example command line usage:
 ```bash
