@@ -57,7 +57,7 @@ namespace Signer
 
 		// set data to everything from the nt header end to the end of the file
 		//data->resize(size - peOffset);
-		data->assign(buffer + peOffset, buffer + size);
+		data->assign(buffer, buffer + size);
 
 		return true;
 	}

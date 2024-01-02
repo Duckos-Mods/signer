@@ -69,6 +69,13 @@ public:
 	inline size_t getStart() { return m_start; }
 	inline size_t getEnd() { return m_end; }
 
+	inline std::vector<sliceType> getAsVector() {
+		std::vector<sliceType> temp;
+		for (size_t i = m_start; i < m_end; i++) {
+			temp.push_back(m_fullObject[i]);
+		}
+		return temp;
+	}
 
 };
 

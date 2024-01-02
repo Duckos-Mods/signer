@@ -1,11 +1,10 @@
-#include "Application.h"
 #include "../Logger/Logger.h"
 #include <thread> // To get the max ammount of threads that the system can run
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include "Application.h"
+#include <assert.h>
 
-size_t g_devideAmount = 2;
-size_t g_trimMinSize = 14;
 
 Application::Application(int argc, char* argv[])
 {
@@ -15,359 +14,364 @@ This application is designed to allow for easy transfer function signatures betw
 This application is not affiliated with Mojang Studios or Microsoft.
 - Duckos
 )");
-    this->argHandler.addArg(
-        new SAH::SAHArg(
-            "--BDSP",
-            "The path to the Bedrock Dedicated Server PDB file. required",
-            "string",
-            true
-        )
-    );
-    this->argHandler.addArg(
+	this->argHandler.addArg(
 		new SAH::SAHArg(
-			"--MCPEE",
-			"The path to the client executable. required",
+			"--MP",
+			"Specifies the path to the MCPE binary",
 			"string",
 			true
 		)
 	);
-    this->argHandler.addArg(
-        new SAH::SAHArg(
-            "--BDSE",
-            "The path to the Bedrock Dedicated Server executable. required",
-            "string",
-            true
-        )
-    );
-    this->argHandler.addArg(
-        new SAH::SAHArg(
-            "--NBTC",
-            "The ammount of threads to use when running a no brute force pass of the binaries",
-            "int",
-            false,
-            std::any(static_cast<int>(std::thread::hardware_concurrency() - 1))
-        )
-    );
-    this->argHandler.addArg(
-        new SAH::SAHArg(
-            "--BTC",
-            "The ammount of threads to use when running a brute force pass of the binaries",
-            "int",
-            false,
-            std::any(static_cast<int>(std::thread::hardware_concurrency() - 1))
-        )
-	);
-    this->argHandler.addArg(
-        new SAH::SAHArg(
-            "--DA",
-            "The Ammount to devide by to calculate the center in the BFSP",
-            "int",
-            false,
-            std::any(static_cast<int>(2))
-        )
-	);
-    this->argHandler.addArg(
-        new SAH::SAHArg(
-            "--SP",
-            "The path to the signature list from the PDB",
-            "string",
-            false,
-            std::any(static_cast<std::string>("NIL"))
-        )
-    );
 
-    this->argHandler.parseArgs(argc, argv);
+	this->argHandler.addArg(
+		new SAH::SAHArg(
+			"--PSP",
+			"Specifies the path to the precomputed signature json",
+			"string",
+			false,
+			std::any(static_cast<std::string>("NIL"))
+		)
+	);
 
-    // print args 
-    Logs::Logger::Info("Arguments:"); 
-    Logs::Logger::Info("BDSP: {}", this->argHandler.getArgString("--BDSP"));
-    Logs::Logger::Info("MCPEE: {}", this->argHandler.getArgString("--MCPEE"));
-    Logs::Logger::Info("BDSE: {}", this->argHandler.getArgString("--BDSE"));
-    Logs::Logger::Info("NBTC: {}", this->argHandler.getArgInt("--NBTC"));
-    Logs::Logger::Info("BTC: {}", this->argHandler.getArgInt("--BTC"));
-    Logs::Logger::Info("SP: {}", this->argHandler.getArgString("--SP"));
-    Logs::Logger::Info("DA: {}", this->argHandler.getArgInt("--DA"));
-    g_devideAmount = this->argHandler.getArgInt("--DA");
-    start();
+	this->argHandler.addArg(
+		new SAH::SAHArg(
+			"--DS",
+			"Specifies if the program should do a deep search",
+			"bool",
+			false,
+			std::any(static_cast<bool>(true))
+		)
+	);
+
+	this->argHandler.addArg(
+		new SAH::SAHArg(
+			"--NBTC",
+			"Specifies the number of threads to use for the non-brute force search",
+			"int",
+			false,
+			std::any(static_cast<int>(1))
+		)
+	);
+
+	Logs::Logger::Info("Parsing arguments");
+	this->argHandler.parseArgs(argc, argv);
+
+	this->mcpePath = this->argHandler.getArgString("--MP");
+	this->precomputedSignaturesPath = this->argHandler.getArgString("--PSP");
+	this->deepSearch = this->argHandler.getArgBool("--DS");
+	this->nonBruteForceThreads = this->argHandler.getArgInt("--NBTC");
+
+	Logs::Logger::Info("MP path : {}", mcpePath);
+	Logs::Logger::Info("PSP path : {}", precomputedSignaturesPath);
+	Logs::Logger::Info("DS : {}", deepSearch);
+
+	start();
 }
 
 void Application::start()
 {
-    auto MCPEPathTemp = this->argHandler.getArgString("--MCPEE");
-    this->MCPEDxeData = new Signer::MCPEPE(MCPEPathTemp.c_str());
-    Logs::Logger::Info("MCPEPE Loaded!");
-    if (this->argHandler.getArgString("--SP") != "NIL")
-    {
-        Logs::Logger::Info("Loading Signatures!");
-		this->MCPEDxeData->loadFromSigJson(this->argHandler.getArgString("--SP").c_str());
-		Logs::Logger::Info("Loaded Signatures!");
-    }
-    else
-    {
-        auto BDSPathTemp = this->argHandler.getArgString("--BDSE");
-        auto BDSPDBTemp = this->argHandler.getArgString("--BDSP");
-        this->BDSEData = new Signer::BDSEPE(BDSPathTemp.c_str(), BDSPDBTemp.c_str());
-        Logs::Logger::Info("BDSEPE Loaded!");
-        // this->MCPEDxeData->setSigJson(this->BDSEData->getSigJson());
-    }
+	Logs::Logger::Info("Loading MCPE binary");
+	this->mcpe = new Signer::MCPEPE(this->mcpePath.c_str());
+	if (this->precomputedSignaturesPath != "NIL")
+	{
+		Logs::Logger::Info("Loading precomputed signatures");
+		mcpe->loadFromSigJson(this->precomputedSignaturesPath.c_str());
+	}
 
-    NBSP();
-    BFSP();
+	NBSP();
+	BFSP();
 
-
-    writeWorkingSignatures();
-    Logs::Logger::Info("Parsed MCPE and BDS PE files");
+	writeWorkingSignatures();
 }
 
 void Application::NBSP()
 {
-    auto NBSPLambda = [&](Signer::SimpleSig& sig, ULONGLONG index) -> void {
-            auto findCount = scan(sig, false, 0);
-            if (findCount == 1)
-            {
-                Logs::Logger::Info("Found Signature: {} symbol: {}", MCPEDxeData->m_bdsSigs[index].first);
-                workingSignatures.push_back(index);
-            }
-			else if (findCount > 1)
+	this->workerPool = new BS::thread_pool(this->nonBruteForceThreads);
+	auto lambda = [&](size_t localIndex) -> void
+		{
+			// Get the signature
+			auto& signature = this->mcpe->m_bdsSigs[localIndex];
+			// Scan for the signature
+			auto locatedAddresses = this->scan(signature.second, this->deepSearch);
+			if (locatedAddresses.size() == 0)
 			{
-				Logs::Logger::Warning("Found Signature: {} symbol: {} {} times", MCPEDxeData->m_bdsSigs[index].first, findCount);
-                failOverSignatures.push_back(index);
+				// Logs::Logger::Warning("Signature {} was not found in the MCPE binary", signature.first);
+				bruteForceContendersMutex.lock();
+				bruteForceContenders.push_back(localIndex);
+				bruteForceContendersMutex.unlock();
+				return;
 			}
-			else
+			if (locatedAddresses.size() > 1)
 			{
-				//Logs::Logger::Warning("Failed to find Signature: {} symbol: {}", MCPEDxeData->m_bdsSigs[index].first);
-                failOverSignatures.push_back(index);
-            }
-        };
+				Logs::Logger::Warning("Signature {} was found at multiple locations in the MCPE binary", signature.first);
+				multiHitSignaturesMutex.lock();
+				multiHitSignatures.push_back(localIndex);
+				multiHitSignaturesMutex.unlock();
+				return;
+			}
+			// Found a single hit
+			std::stringstream locatedAddressHex;
+			locatedAddressHex << std::hex << locatedAddresses[0] + 0xC00; // I think i just add that and it works 
+			this->mcpe->m_bdsSigs[localIndex].second.setOffset(locatedAddresses[0] + 0xC00);
+			Logs::Logger::Info("Signature {} was found at 0x{}", signature.first, locatedAddressHex.str());
+			workingSignaturesMutex.lock();
+			workingSignatures.push_back(localIndex);
+			workingSignaturesMutex.unlock();
+		};
 
-    // Init the thread pool
-    this->pool = new BS::thread_pool(this->argHandler.getArgInt("--NBTC"));
-
-    Logs::Logger::Info("Filling NBSP pool");
-
-    // Run the thread pool
-    for (ULONGLONG i = 0; i < MCPEDxeData->m_bdsSigs.size(); i++)
-    {
-        auto sig = MCPEDxeData->m_bdsSigs[i];
-        pool->detach_task([i, sig, &NBSPLambda]() {
-            NBSPLambda(*const_cast<Signer::SimpleSig*>(&sig.second), i);  // Change the capture of `i` to capture by value
-            });
-    }
-
-
-    Logs::Logger::Info("Waiting for thread pool to finish");
-    // Wait for the thread pool to finish
-    pool->wait();
-
-    Logs::Logger::Info("Finished NBSP pool, {} Functions have the same signature.", this->workingSignatures.size());
-
-    delete pool;
+	Logs::Logger::Info("Starting non-brute force search");
+	for (size_t i = 0; i < this->mcpe->m_bdsSigs.size(); i++)
+	{
+		auto call = [=]() -> void
+			{
+				lambda(i);
+			};
+		this->workerPool->detach_task(call);
+	}
+	Logs::Logger::Info("Waiting for non-brute force search to finish");
+	this->workerPool->wait();
+	delete this->workerPool;
+	Logs::Logger::Info("Non-brute force search finished with {}/{} signatures found. {} signatures were not found and {} signatures were found at multiple locations", workingSignatures.size(), this->mcpe->m_bdsSigs.size(), bruteForceContenders.size(), multiHitSignatures.size());
 }
 
 void Application::BFSP()
 {
-    // Init the thread pool
-    this->pool = new BS::thread_pool(this->argHandler.getArgInt("--BTC"));
+	// Init the worker pool
+	this->workerPool = new BS::thread_pool(this->nonBruteForceThreads);
 
-    Logs::Logger::Info("Filling BFSP pool");
-    std::mutex mtx;
-    for (auto index : this->failOverSignatures)
-    {
-        pool->detach_task(
-            [&, index]() {
-                //Signer::SimpleSig sign = ;
-                auto sig = trimScan(MCPEDxeData->m_bdsSigs[index].second, 0);
-                if (sig.isNull())
-                {
-					Logs::Logger::Warning("Failed to trim Signature: {}", MCPEDxeData->m_bdsSigs[index].first);
-					return;
-                }
-                mtx.lock();
-                MCPEDxeData->m_bdsSigs[index].second = sig;
-                workingSignatures.push_back(index);
-                mtx.unlock();
-                Logs::Logger::Info("Created Trimmed Signature: {} symbol: {}", MCPEDxeData->m_bdsSigs[index].first, sig.toString());
-                
-            }
-        );
-    }
-    pool->wait();
-    Logs::Logger::Info("Waiting for thread pool to finish");
+	// Store the current working signatures size
+	size_t currentWorkingSignaturesSize = workingSignatures.size();
+
+	// Define the lambda
+	auto lambda = [&](size_t index) -> void
+		{
+			// Get sig from sigDump
+			auto& signature = this->mcpe->m_bdsSigs[index];
+
+			// Trim scan the signature
+			auto trimmedSig = this->trimScan(signature.second, 0);
+
+			// If sig is null we failed to trim scan and should return and warn in the console
+			if (trimmedSig.isNull())
+			{
+				Logs::Logger::Warning("Failed to trim scan for the signature of {}", signature.first);
+				return;
+			}
+
+			// If sig is not aligned to 0x10 we should warn in the console and push to a new vector
+			if (trimmedSig.getOffset() % 0x10 != 0)
+			{
+				Logs::Logger::Warning("Trimmed signature {} was not aligned to 0x10", signature.first);
+				nonAlignedSignaturesMutex.lock();
+				nonAlignedSignatures.push_back(index);
+				nonAlignedSignaturesMutex.unlock();
+				return;
+			}
+
+			// We have a trimmed signature so log it and modify the signature in the mcpe object
+			std::stringstream locatedAddressHex;
+			locatedAddressHex << std::hex << trimmedSig.getOffset();
+			Logs::Logger::Info("Trimmed signature {} was found at 0x{}", signature.first, locatedAddressHex.str());
+			this->mcpe->m_bdsSigs[index].second = trimmedSig;
+
+			// Add the index to the working signatures
+			workingSignaturesMutex.lock();
+			workingSignatures.push_back(index);
+			workingSignaturesMutex.unlock();
+
+			// return
+			return;
+		};
+
+	Logs::Logger::Info("Starting brute force search");
+	for (auto& index : bruteForceContenders)
+	{
+		auto call = [=]() -> void
+			{
+					lambda(index);
+			};
+		this->workerPool->detach_task(call);
+	}
+	Logs::Logger::Info("Waiting for brute force search to finish");
+	this->workerPool->wait();
+	delete this->workerPool; // Delete the worker pool
+	Logs::Logger::Info("Brute force search finished with {}/{} signatures found", workingSignatures.size() - currentWorkingSignaturesSize, bruteForceContenders.size());
+
+
 }
 
 void Application::writeWorkingSignatures()
 {
-    // We wont invoke a real json lib it will just be faster to manualy write it
-    std::ofstream jsonFile;
-    jsonFile.open("Signatures.json");
-    jsonFile << "{\n";
-    for (auto& index : this->workingSignatures)
+	Logs::Logger::Info("Writing working signatures to file");
+	nlohmann::json wj;
+	nlohmann::json ws;
+	nlohmann::json mhs;
+	nlohmann::json nas;
+
+	for (auto& index : workingSignatures)
 	{
-		jsonFile << "\t\"" << MCPEDxeData->m_bdsSigs[index].first << "\": \"" << MCPEDxeData->m_bdsSigs[index].second.toString() << "\",\n";
+		// End structure should be "symbol" : [sig, offset]
+		auto& signature = this->mcpe->m_bdsSigs[index];
+
+		nlohmann::json array = { signature.second.toString(), signature.second.getOffset() };
+		ws[signature.first] = array;
 	}
-    // set the last comma to a }
-    jsonFile.seekp(-3, std::ios_base::end);
-    jsonFile << "\n}";
-    jsonFile.close();
-    Logs::Logger::Info("Finished writing to JsonFile!");
+	wj["workingSignatures"] = ws;
+
+
+	// Write manual sig fixes
+	for (auto& index : this->multiHitSignatures)
+	{
+		auto& signature = this->mcpe->m_bdsSigs[index];
+		mhs[signature.first] = { signature.second.toString(), "MULTI" };
+	}
+	wj["multiHitSignatures"] = mhs;
+
+	// Write non aligned sigs
+	for (auto& index : this->nonAlignedSignatures)
+	{
+		auto& signature = this->mcpe->m_bdsSigs[index];
+		nas[signature.first] = { signature.second.toString(), signature.second.getOffset()};
+
+	}
+	wj["nonAlignedSignatures"] = nas;
+
+	std::ofstream o("workingSignatures.json");
+	o << std::setw(4) << wj << std::endl;
+	o.close();
+
 }
 
-ULONGLONG Application::scan(Signer::SimpleSig& signature, bool deepSearch, size_t offset)
+std::vector<ULONGLONG> Application::scan(Signer::SimpleSig& signature, bool deepSearch, size_t /*Unused*/)
 {
-    auto& data = MCPEDxeData->m_PEData;
-    BoundedSlice<BYTE> memslice(
-        data,
-        offset,
-        offset + signature.getLength(),
-        data.size());
-    size_t sliceEndIndex = offset + signature.getLength();
-    ULONGLONG foundCount = 0;
-    // Logs::Logger::Info("Mask: {}", maskToString());
-    auto* mask = signature.getMask();
-    while (true)
-    {
-        for (int sigIndex = 0; sigIndex < signature.getLength(); sigIndex++)
-        {
-            if (sliceEndIndex == data.size())
-                return foundCount;
+	std::vector<ULONGLONG> locatedAddresses; // The addresses that the signature was found at
+	// The signature data, mask, and size
+	auto* sigData = signature.getSignature();
+	size_t sigSize = signature.getLength();
+	auto* sigMask = signature.getMask();
 
-            if ((*mask)[sigIndex])
-                continue;
+	// Mem slice of the MCPE binary
+	BoundedSlice<BYTE> mcpeSlice(
+		*const_cast<const std::vector<BYTE>*>(&this->mcpe->m_PEData),
+		0,
+		sigSize-1,
+		this->mcpe->m_PEData.size()
+	);
+	
+	// size_t currentEndOffset = sigSize - 1; // The current end offset of the signature
+	size_t oldEnd = mcpeSlice.getEnd();
+	while (mcpeSlice.getEnd() != this->mcpe->m_PEData.size())
+	{
+		for (size_t i = 0; i < sigSize; i++)
+		{
+			// Handle the case where the last byte is a wildcard this used to cause a loop
+			if (i == sigSize - 1 && (*sigMask)[i])
+			{
+				// Found a match
+				locatedAddresses.push_back(mcpeSlice.getStart());
+				mcpeSlice.slide(sigSize - 1);
+				if (!deepSearch)
+					return locatedAddresses;
+				break; // No reason to continue if the current byte doesn't match
+			}
+			if ((*sigMask)[i])
+			{
+				continue; // Found a wildcard, skip this byte
+			}
+			if ((*sigData)[i] != mcpeSlice[i])
+			{
+				mcpeSlice.slide(1);
+				break; // No reason to continue if the current byte doesn't match
+ 			}
+			if (i == sigSize - 1)
+			{
+				// Found a match
+				locatedAddresses.push_back(mcpeSlice.getStart());
+				mcpeSlice.slide(sigSize-1);
+				if (!deepSearch)
+					return locatedAddresses;
+			}
+			
+		}
+		if (mcpeSlice.getEnd() == oldEnd)
+		{
+			mcpeSlice.slide(1);
+			Logs::Logger::Warning("Detected a hang in the scan, sliding 1 byte this should not happen dumping log info");
+			// Throw a debug breakpoint
+			//__debugbreak();
+			Logs::Logger::Warning(R"(
+Start : {}
+End : {}
+Size : {}
+Signature : {}
+Mask : {}
+Locatted Addresses Count : {}
+Current End Offset : {}
+)", mcpeSlice.getStart(), mcpeSlice.getEnd(), mcpeSlice.size(), signature.toString(), signature.maskToString(), locatedAddresses.size(), oldEnd);
+		}
+		oldEnd = mcpeSlice.getEnd();
+	}
 
-            if (signature[sigIndex] != memslice[sigIndex])
-            {
-                memslice.slide(1);
-                sliceEndIndex++;
-                break;
-            }
-
-            if (sigIndex == signature.getLength() - 1)
-            {
-                foundCount++;
-                if (!deepSearch)
-                    return 1;
-            }
-        }
-    }
+	return locatedAddresses;
 }
 
 Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t offset)
 {
-    // If sig is shorter than g_trimMinSize return a null signature
+	Signer::SimpleSig trimmedSig("");
 
-    if (signature.getLength() < g_trimMinSize)
-    {
-        Logs::Logger::Warning("Signature: {} is too short to trim, This may be changed by a flag --TMS this can make the scans take hours longer though", signature.toString());
-        return Signer::SimpleSig("");
-    }
+	if (signature.getLength() < 4)
+		return trimmedSig;
 
-    auto* sigData = signature.getSignature();
-    auto* mask = signature.getMask();
+	// The signature data, mask, and size
+	auto* sigData = signature.getSignature();
+	size_t sigSize = signature.getLength();
+	auto* sigMask = signature.getMask();
 
-    auto& data = MCPEDxeData->m_PEData;
-    // Calculate the center of the signature
-    size_t center = signature.getLength() / g_devideAmount;
-
-    // Create a mem slice of the signature from the start to the center
-    BoundedSlice<BYTE> sigSlice(
-		*sigData, 
+	// Calculate a center point of the signature
+	size_t centerPoint = sigSize / 2;
+	// Mem slice over the signature to its left
+	BoundedSlice<BYTE> leftSlice(
+		*const_cast<const std::vector<BYTE>*>(sigData),
 		0,
-		center,
-		signature.getLength());
+		centerPoint,
+		sigSize
+	);
 
-    // Create the mem slice of client data 
-    BoundedSlice<BYTE> memslice(
-        data,
-        offset,
-        offset + signature.getLength(),
-        data.size());
+	// Construct a new signature
+	// Remove any trailing wildcards
+	while (leftSlice.back() == 0x00)
+	{
+		leftSlice.setEnd(leftSlice.getEnd() + 1);
+		if (leftSlice.getEnd() == 0)
+			return Signer::SimpleSig("");
+	}
+	Signer::SimpleSig newSig(leftSlice.getAsVector(), *sigMask);
 
-    // Scan for the half signature and cache the starting address of every match
-    std::vector<size_t> matches;
+	while (true)
+	{
+		// Scan for the new signature
+		auto addrs = scan(newSig, true);
+		// If there are no hits, return an empty signature
+		if (addrs.size() == 0)
+			return Signer::SimpleSig("");
+		// If there is a single hit, begin testing for validity
+		if (addrs.size() == 1)
+		{
+			// Use std::move to avoid copying the signature
+			trimmedSig = std::move(newSig);
+			// Set the offset of the signature
+			trimmedSig.setOffset(addrs[0] + 0xC00);
 
-    size_t sliceEndIndex = offset + signature.getLength();
-    while (true)
-    {
-        for (size_t splitIndex = 0; splitIndex < center; splitIndex++)
-        {
-			if (sliceEndIndex == data.size())
-                goto LOOPJUMP;
-            if (splitIndex == center - 1)
-            {
-                matches.push_back(sliceEndIndex - signature.getLength());
-                // Slide the memslice to the next byte to continue the search
-                memslice.slide(1);
-                sliceEndIndex++;
-                break;
-            }
-			if ((*mask)[splitIndex])
-				continue;
+			break;
+		}
 
-			if (sigSlice[splitIndex] != memslice[splitIndex])
-			{
-				memslice.slide(1);
-				sliceEndIndex++;
-				break;
-			}
+		// Multiple hits, reclaim more of the signature
+		leftSlice.setEnd(leftSlice.getEnd() + 1);
+		if (leftSlice.getEnd() == sigSize)
+			return Signer::SimpleSig("");
 
-			if (splitIndex == center - 1)
-			{
-				matches.push_back(sliceEndIndex - signature.getLength());
-                // Slide the memslice to the next byte to continue the search
-                memslice.slide(1);
-                sliceEndIndex++;
-            }
-        }
-    }
-
-    LOOPJUMP:
-    // If we have no matches return a null signature
-    if (matches.size() == 0)
-		return Signer::SimpleSig("");
-
-    // Now we begin the process of trimming the signature
-    while (true)
-    {
-        // Reclaim one byte from sig slice
-        sigSlice.setEnd(sigSlice.getEnd() + 1);
-        for (int i = 0; i < matches.size(); i++)
-        {
-            size_t matchBegin = matches[i];
-            // walk from the match begin to the end of the signature and check if the signature matches
-            for (size_t sigIndex = 0; sigIndex < sigSlice.getEnd(); sigIndex++)
-            {
-                // We have hit a mask byte so we can skip this byte
-                if ((*mask)[sigIndex])
-                    continue;
-
-                if (sigSlice[sigIndex] != data[matchBegin + sigIndex])
-                {
-                    // We have hit a byte that does not match so we can remove this match
-                    matches.erase(matches.begin() + i);
-                    break;
-                }
-            }
-
-        }
-
-        if (sigSlice.getEnd() == signature.getLength())
-            return Signer::SimpleSig(""); // Returns a null signature if we have trimmed the signature to nothing
-        // If we have no matches return a null signature
-        if (matches.size() == 0)
-            return Signer::SimpleSig("");
-        // If we have only one match return the signature
-        if (matches.size() == 1) {
-            std::vector<BYTE> trimmedSigData;
-            for (size_t sigIndex = 0; sigIndex < sigSlice.getEnd(); sigIndex++)
-			{
-                BYTE val = sigSlice.atClone(sigIndex);
-				trimmedSigData.push_back(val);
-			}
-            Signer::SimpleSig trimmedSig = Signer::SimpleSig(
-                trimmedSigData,
-                *mask
-            );
-            return trimmedSig;
-        }
-    }
+		// Set the new signature data
+		newSig.setSignatureDataNoMask(leftSlice.getAsVector());
+	}
+	return trimmedSig;
 }
