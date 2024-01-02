@@ -1,34 +1,50 @@
-# Signer
+# Signer - Minecraft Bedrock Edition Signature Tool
+
 ## Introduction
-1. What is signer?
-> Signer is an application developed to allow the easy transfer/testing of bulk signatures for minecraft bedrock edition
-2. Should I use it?
-> There isn't any reason you shouldn't use it.
-3. Could this be used for making cheats?
-> While technically the output from this application could be used to make cheats.
-> A lot of the functions it outputs are not too useful in making cheats for minecraft bedrock
-> This was mostly designed to help with the [Amethyst Project](https://github.com/FrederoxDev/Amethyst)   and making mods for said project
-4. Contributing?
-> Id be happy to let you contribute just. 
- >As long as you label your commit properly and give a good explanation of how it works i see no reason i wouldn't accept it.
- ## Using
- To use Signer you need a precomputed signature dump for your client of choice this can be from MC China, Bedrock BDS, event custom signatures that you just want trimmed or any other places you have a signature dump from ;).
- 1. Formatting: For Signer to understand your symbol dump it needs to be formatted as so `"Symbol Name": "AA BB CC DD ?"` Signers signature scanner is sensitive so it needs the formatting of a byte a space then a byte and so on
- 2. You need a copy of minecraft bedrock and the location of the exe for the game
- 3. You need a lot of time this process can take multiple hours to run
- 
-|Arguments| Use |
-|--|--|
-| --MP | This tells Signer where the location of MCPE is. This is required |
-| --PSP| This tells Signer the location of the Signature dump. This technically isn't required but there isn't handling for any other cases curranty
-| --NBTC| This tells Signer how many threads to use. This isnt needed but Signer defaults to 1 thread which would take around 10 ish hours. I allocate 10 threads on a 12 threaded CPU    
-  
-  
-Example of a valid argument list : `--MP C:\Users\name\AppData\Roaming\.minecraft_bedrock\versions\58c5f0cd-09d7-4e99-a6b6-c3829fd62ac9\Minecraft.Windows.exe --PSP D:\bds_sigs.json --NBTC 10`
-Now run signer and wait. Signer took around 2 hours and 51 minutes on my machine so be ready to wait a long time.  
-## After
-So now you should have a json file called `workingSignatures`. This contains a list of signatures and there offset from the base of minecraft.  
-To import these into something like IDA a script can be used 
+
+1. **What is Signer?**
+   Signer is a specialized application developed to facilitate the effortless transfer and testing of bulk signatures specifically designed for Minecraft Bedrock Edition.
+
+2. **Should I use it?**
+   There's no reason why you shouldn't use Signer. It simplifies the process of managing signature dumps, especially for projects like the [Amethyst Project](https://github.com/FrederoxDev/Amethyst) and creating mods for it.
+
+3. **Could this be used for making cheats?**
+   While the output from Signer could be repurposed for cheats, its primary functions are geared towards aiding Minecraft Bedrock modding rather than cheating purposes.
+
+4. **Contributing?**
+   Contributions are welcome! Please ensure proper labeling of commits and provide comprehensive explanations of your changes for smoother integration.
+
+## Usage
+
+To effectively utilize Signer, follow these steps:
+
+1. **Prepare Signature Dump:**
+   Ensure your symbol dump is formatted as `"Symbol Name": "AA BB CC DD ?"`. Signer's signature scanner relies on byte-by-byte formatting.
+
+2. **Required Components:**
+   - Have a copy of Minecraft Bedrock installed.
+   - Know the location of the game's executable file.
+
+3. **Time Allocation:**
+   Be prepared for a time-intensive process; Signer can take multiple hours to run.
+
+### Arguments
+
+| Argument | Use |
+| -------- | --- |
+| --MP     | Specifies the location of MCPE (Minecraft Pocket Edition) |
+| --PSP    | Indicates the location of the Signature dump (essential for current functionality) |
+| --NBTC   | Specifies the number of threads to use (optional but recommended for faster processing) |
+
+Example command line usage:
+```bash
+Signer.exe --MP C:\Users\name\AppData\Roaming\.minecraft_bedrock\versions\58c5f0cd-09d7-4e99-a6b6-c3829fd62ac9\Minecraft.Windows.exe --PSP D:\bds_sigs.json --NBTC 10
+```
+**Note:** Running Signer may take considerable time (e.g., around 2 hours and 51 minutes on a standard machine).
+
+## Post-Processing
+
+Upon completion, a JSON file named `workingSignatures` will be generated. To import these into IDA, use the provided Python script.
 ```py
 import  ida_kernwin
 import  json
@@ -52,7 +68,7 @@ count  =  0
 for  mangled_name  in  signatures:
 
 	if  mangled_name  ==  "?write_double_translated_ansi_nolock@@YA?AUwrite_result@?A0x17268360@@HQEBDI@Z":
-		continue
+	continue
 
 	unbased_ea  =  signatures[mangled_name][1]
 
