@@ -21,9 +21,9 @@
 |--|--|
 | --MP | This tells Signer where the location of MCPE is. This is required |
 | --PSP| This tells Signer the location of the Signature dump. This technically isn't required but there isn't handling for any other cases curranty
-| --NBTC| This tells Signer how many threads to use. This isnt needed but Signer defaults to 1 thread which would take around 10 ish hours. I allocate 10 threads on a 12 threaded CPU  
-
-
+| --NBTC| This tells Signer how many threads to use. This isnt needed but Signer defaults to 1 thread which would take around 10 ish hours. I allocate 10 threads on a 12 threaded CPU    
+  
+  
 Example of a valid argument list : `--MP C:\Users\name\AppData\Roaming\.minecraft_bedrock\versions\58c5f0cd-09d7-4e99-a6b6-c3829fd62ac9\Minecraft.Windows.exe --PSP D:\bds_sigs.json --NBTC 10`
 Now run signer and wait. Signer took around 2 hours and 51 minutes on my machine so be ready to wait a long time.  
 ## After
