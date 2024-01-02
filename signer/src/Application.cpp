@@ -53,6 +53,16 @@ This application is not affiliated with Mojang Studios or Microsoft.
 		)
 	);
 
+	this->argHandler.addArg(
+		new SAH::SAHArg(
+			"--CDV",
+			"Specifies the number to use as the division factor for the brute force search",
+			"int",
+			false,
+			std::any(static_cast<int>(2))
+		)
+	);
+
 	Logs::Logger::Info("Parsing arguments");
 	this->argHandler.parseArgs(argc, argv);
 
@@ -60,10 +70,13 @@ This application is not affiliated with Mojang Studios or Microsoft.
 	this->precomputedSignaturesPath = this->argHandler.getArgString("--PSP");
 	this->deepSearch = this->argHandler.getArgBool("--DS");
 	this->nonBruteForceThreads = this->argHandler.getArgInt("--NBTC");
+	this->divisionFactor = this->argHandler.getArgInt("--CDV");
 
 	Logs::Logger::Info("MP path : {}", mcpePath);
 	Logs::Logger::Info("PSP path : {}", precomputedSignaturesPath);
 	Logs::Logger::Info("DS : {}", deepSearch);
+	Logs::Logger::Info("NBTC : {}", nonBruteForceThreads);
+	Logs::Logger::Info("CDV : {}", divisionFactor);
 
 	start();
 }
@@ -319,7 +332,7 @@ Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t off
 {
 	Signer::SimpleSig trimmedSig("");
 
-	if (signature.getLength() < 4)
+	if (signature.getLength() < divisionFactor*2)
 		return trimmedSig;
 
 	// The signature data, mask, and size
@@ -328,7 +341,7 @@ Signer::SimpleSig Application::trimScan(Signer::SimpleSig& signature, size_t off
 	auto* sigMask = signature.getMask();
 
 	// Calculate a center point of the signature
-	size_t centerPoint = sigSize / 2;
+	size_t centerPoint = sigSize / divisionFactor;
 	// Mem slice over the signature to its left
 	BoundedSlice<BYTE> leftSlice(
 		*const_cast<const std::vector<BYTE>*>(sigData),

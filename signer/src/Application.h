@@ -30,6 +30,7 @@ private:
 	std::string precomputedSignaturesPath;
 	bool deepSearch = false;
 	int nonBruteForceThreads = 1;
+	int divisionFactor = 2;
 public:
 	Application(int argc, char* argv[]);
 	~Application()
