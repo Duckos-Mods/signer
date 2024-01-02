@@ -52,7 +52,7 @@ count  =  0
 for  mangled_name  in  signatures:
 
 	if  mangled_name  ==  "?write_double_translated_ansi_nolock@@YA?AUwrite_result@?A0x17268360@@HQEBDI@Z":
-	continue
+		continue
 
 	unbased_ea  =  signatures[mangled_name][1]
 
