@@ -92,7 +92,7 @@ void Application::start()
 	}
 
 	NBSP();
-	BFSP();
+	// BFSP();
 
 	writeWorkingSignatures();
 }
