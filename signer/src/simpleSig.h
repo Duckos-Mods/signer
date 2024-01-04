@@ -156,6 +156,7 @@ namespace Signer
 		nLengthBitMask* getMask()  { return &mask; }
 		size_t getLength() const { return signature.size(); }
 		bool isNull() const { return signature.empty(); }
+		size_t getArgumentCount() const { return argumentCount; }
 
 		// [] operator
 		BYTE operator[](size_t index) const {

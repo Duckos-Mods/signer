@@ -320,7 +320,7 @@ void Application::writeWorkingSignatures()
 	for (auto& index : this->nonAlignedSignatures)
 	{
 		auto& signature = this->mcpe->m_bdsSigs[index];
-		nas[signature.first] = { signature.second.toString(), signature.second.getOffset()};
+		nas[signature.first] = { signature.second.toString(), signature.second.getOffset(), signature.second.getArgumentCount() };
 
 	}
 	wj["nonAlignedSignatures"] = nas;
@@ -329,7 +329,7 @@ void Application::writeWorkingSignatures()
 	for (auto& index : this->workingTrimmedSignatures)
 	{
 		auto& signature = this->mcpe->m_bdsSigs[index];
-		wts[signature.first] = { signature.second.toString(), signature.second.getOffset() };
+		wts[signature.first] = { signature.second.toString(), signature.second.getOffset(), signature.second.getArgumentCount()};
 	}
 	wj["trimmedSignatures"] = wts;
 
