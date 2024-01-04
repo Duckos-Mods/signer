@@ -178,6 +178,11 @@ namespace Signer
 			this->mask = mask;
 		}
 
+		void setArguments(std::vector<std::string>& arguments) {
+			this->arguments = arguments;
+			this->argumentCount = arguments.size();
+		}
+
 	private:
 		void inline CompileSignatureMask()
 		{
@@ -193,5 +198,7 @@ namespace Signer
 		std::vector<BYTE> signature;
 		nLengthBitMask mask;
 		size_t offset = 0;
+		int argumentCount = -1;
+		std::vector<std::string> arguments;
 	};
 }

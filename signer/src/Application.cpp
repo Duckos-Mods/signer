@@ -4,7 +4,12 @@
 #include <nlohmann/json.hpp>
 #include "Application.h"
 #include <assert.h>
+#include <Dbghelp.h>
 
+// I would never do this usually but i dont care enough right now.
+#pragma comment(lib, "Dbghelp.lib")
+
+constexpr DWORD maxSymbolLength = 1024 * 12;
 
 Application::Application(int argc, char* argv[])
 {
@@ -62,6 +67,15 @@ This application is not affiliated with Mojang Studios or Microsoft.
 			std::any(static_cast<int>(2))
 		)
 	);
+	this->argHandler.addArg(
+		new SAH::SAHArg(
+			"--EO",
+			"Specifies if the program should early out and only dump workingsigs and not trim any",
+			"bool",
+			false,
+			std::any(static_cast<bool>(false))
+		)
+	);
 
 	Logs::Logger::Info("Parsing arguments");
 	this->argHandler.parseArgs(argc, argv);
@@ -92,7 +106,8 @@ void Application::start()
 	}
 
 	NBSP();
-	// BFSP();
+	if (!this->argHandler.getArgBool("--EO"))
+		BFSP();
 
 	writeWorkingSignatures();
 }
@@ -125,6 +140,35 @@ void Application::NBSP()
 			// Found a single hit
 			std::stringstream locatedAddressHex;
 			locatedAddressHex << std::hex << locatedAddresses[0] + 0xC00; // I think i just add that and it works 
+			// Calculate the ammount of arguments the function takes
+			char demangled[maxSymbolLength];
+			DWORD result = 0;
+			// Demangle the symbol
+			result = UnDecorateSymbolName(signature.second.toString().c_str(), demangled, maxSymbolLength, UNDNAME_COMPLETE);
+
+			// If the demangle failed we should warn in the console 
+			if (result != 0)
+			{
+				std::vector<std::string> arguments;
+				size_t start = 0;
+				for (size_t end = 0; end < maxSymbolLength; end++)
+				{
+					if (demangled[end] == '\0')
+					{
+						arguments.push_back(std::string(demangled + start, end - start));
+						break;
+					}
+					if (demangled[end] == ',')
+					{
+						arguments.push_back(std::string(demangled + start, end - start));
+						start = end + 1;
+					}
+				}
+			}
+			else
+			{
+				Logs::Logger::Warning("Failed to demangle symbol {}. Maybe a custom signature?", signature.second.toString());
+			}
 			this->mcpe->m_bdsSigs[localIndex].second.setOffset(locatedAddresses[0] + 0xC00);
 			Logs::Logger::Info("Signature {} was found at 0x{}", signature.first, locatedAddressHex.str());
 			workingSignaturesMutex.lock();
@@ -184,13 +228,44 @@ void Application::BFSP()
 			// We have a trimmed signature so log it and modify the signature in the mcpe object
 			std::stringstream locatedAddressHex;
 			locatedAddressHex << std::hex << trimmedSig.getOffset();
+
+			// Calculate the ammount of arguments the function takes
+			char demangled[maxSymbolLength];
+			DWORD result = 0;
+			// Demangle the symbol
+			result = UnDecorateSymbolName(trimmedSig.toString().c_str(), demangled, maxSymbolLength, UNDNAME_COMPLETE);
+
+			// If the demangle failed we should warn in the console 
+			if (result != 0)
+			{
+				std::vector<std::string> arguments;
+				size_t start = 0;
+				for (size_t end = 0; end < maxSymbolLength; end++)
+				{
+					if (demangled[end] == '\0')
+					{
+						arguments.push_back(std::string(demangled + start, end - start));
+						break;
+					}
+					if (demangled[end] == ',')
+					{
+						arguments.push_back(std::string(demangled + start, end - start));
+						start = end + 1;
+					}
+				}
+			}
+			else
+			{
+				Logs::Logger::Warning("Failed to demangle symbol {}. Maybe a custom signature?", trimmedSig.toString());
+			}
+
 			Logs::Logger::Info("Trimmed signature {} was found at 0x{}", signature.first, locatedAddressHex.str());
 			this->mcpe->m_bdsSigs[index].second = trimmedSig;
 
 			// Add the index to the working signatures
-			workingSignaturesMutex.lock();
-			workingSignatures.push_back(index);
-			workingSignaturesMutex.unlock();
+			workingTrimmedSignaturesMutex.lock();
+			workingTrimmedSignatures.push_back(index);
+			workingTrimmedSignaturesMutex.unlock();
 
 			// return
 			return;
@@ -220,6 +295,7 @@ void Application::writeWorkingSignatures()
 	nlohmann::json ws;
 	nlohmann::json mhs;
 	nlohmann::json nas;
+	nlohmann::json wts;
 
 	for (auto& index : workingSignatures)
 	{
@@ -248,6 +324,14 @@ void Application::writeWorkingSignatures()
 
 	}
 	wj["nonAlignedSignatures"] = nas;
+
+	// Write working trimmed sigs
+	for (auto& index : this->workingTrimmedSignatures)
+	{
+		auto& signature = this->mcpe->m_bdsSigs[index];
+		wts[signature.first] = { signature.second.toString(), signature.second.getOffset() };
+	}
+	wj["trimmedSignatures"] = wts;
 
 	std::ofstream o("workingSignatures.json");
 	o << std::setw(4) << wj << std::endl;

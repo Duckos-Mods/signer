@@ -15,11 +15,13 @@ private:
 	BS::thread_pool* workerPool;
 
 	std::mutex workingSignaturesMutex;
+	std::mutex workingTrimmedSignaturesMutex;
 	std::mutex bruteForceContendersMutex;
 	std::mutex multiHitSignaturesMutex;
 	std::mutex nonAlignedSignaturesMutex;
 private:
 	// Finished Signature scans
+	std::vector<ULONGLONG> workingTrimmedSignatures;
 	std::vector<ULONGLONG> workingSignatures;
 	std::vector<ULONGLONG> bruteForceContenders;
 	std::vector<ULONGLONG> multiHitSignatures;
