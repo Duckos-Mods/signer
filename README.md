@@ -36,6 +36,7 @@ To effectively utilize Signer, follow these steps:
 | --PSP    | Indicates the location of the Signature dump (essential for current functionality) |
 | --NBTC   | Specifies the number of threads to use (optional but recommended for faster processing) |
 | --CDV   | Specifies the division factor used to calculate the bruteforce signatures. (default is 2) |
+| --EO   | If enabled Signer only does the direct check pass and doesnt brute force |
 
 Example command line usage:
 ```bash
